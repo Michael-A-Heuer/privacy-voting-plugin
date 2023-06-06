@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0
 pragma solidity ^0.8;
 
-import './LibUint1024.sol';
-import './LibPrime.sol';
+import "./LibUint1024.sol";
+import "./LibPrime.sol";
 
-
-/// @dev The Cicada base contract. Note that the `createVote` and 
+/// @dev The Cicada base contract. Note that the `createVote` and
 ///      `castBallot` functions assume that access control is implemented
 ///      by the inheriting contract.
 abstract contract CicadaVote {
@@ -59,12 +58,8 @@ abstract contract CicadaVote {
         PublicParameters pp
     );
 
-    event VoteFinalized(
-        uint256 voteId,
-        uint64 numYesVotes,
-        uint64 numNoVotes
-    );
-    
+    event VoteFinalized(uint256 voteId, uint64 numYesVotes, uint64 numNoVotes);
+
     error InvalidProofOfExponentiation();
     error InvalidPuzzleSolution();
     error InvalidBallot();
@@ -78,11 +73,11 @@ abstract contract CicadaVote {
     mapping(uint256 => Vote) public votes;
 
     /// @dev Creates a vote using the given public parameters.
-    ///      CAUTION: This function does not check the validity of 
+    ///      CAUTION: This function does not check the validity of
     ///      the public parameters! Most notably, it does not check
-    ///          1. that pp.N is a valid RSA modulus, 
-    ///          2. that h = g^(2^T), 
-    ///          3. or that g and y have Jacobi symbol 1. 
+    ///          1. that pp.N is a valid RSA modulus,
+    ///          2. that h = g^(2^T),
+    ///          3. or that g and y have Jacobi symbol 1.
     ///      These should be verified off-chain (or in the inheriting
     ///      contract, if desired).
     /// @param pp Public parameters for the homomorphic time-lock puzzles.
@@ -94,9 +89,7 @@ abstract contract CicadaVote {
         string memory description,
         uint64 startTime,
         uint64 votingPeriod
-    )
-        internal
-    {
+    ) internal {
         pp.g = pp.g.normalize(pp.N);
         pp.h = pp.h.normalize(pp.N);
         pp.y = pp.y.normalize(pp.N);
@@ -114,7 +107,7 @@ abstract contract CicadaVote {
         //     u = g^1 (mod N)
         //     v = h^1 * y^0 (mod N)
         // and populates the tally storage slots so subsequent SSTOREs
-        // incur a gas cost of SSTORE_RESET_GAS (~5k) instead of 
+        // incur a gas cost of SSTORE_RESET_GAS (~5k) instead of
         // SSTORE_SET_GAS (~20k).
         newVote.tally.u = pp.g;
         newVote.tally.v = pp.h;
@@ -127,13 +120,7 @@ abstract contract CicadaVote {
         uint64 endTime = startTime + votingPeriod;
         newVote.endTime = endTime;
 
-        emit VoteCreated(
-            voteId,
-            description,
-            startTime,
-            endTime,
-            pp
-        );
+        emit VoteCreated(voteId, description, startTime, endTime, pp);
     }
 
     /// @dev Casts a ballot for an active vote.
@@ -146,14 +133,9 @@ abstract contract CicadaVote {
         PublicParameters memory pp,
         Puzzle memory ballot,
         ProofOfValidity memory PoV
-    )
-        internal
-    {
+    ) internal {
         Vote storage vote = votes[voteId];
-        if (
-            block.timestamp < vote.startTime || 
-            block.timestamp > vote.endTime
-        ) {
+        if (block.timestamp < vote.startTime || block.timestamp > vote.endTime) {
             revert VoteIsNotOngoing();
         }
         bytes32 parametersHash = keccak256(abi.encode(pp));
@@ -172,7 +154,7 @@ abstract contract CicadaVote {
     /// @param tallyPlaintext The purported plaintext vote tally.
     /// @param w The purported value `w := Z.u^(2^T)`, where Z
     ///          is the puzzle encoding the tally.
-    /// @param PoE The Wesolowski proof of exponentiation (i.e. the 
+    /// @param PoE The Wesolowski proof of exponentiation (i.e. the
     ///        proof that `w = Z.u^(2^T)`)
     function _finalizeVote(
         uint256 voteId,
@@ -180,10 +162,8 @@ abstract contract CicadaVote {
         uint64 tallyPlaintext,
         uint256[4] memory w,
         ProofOfExponentiation memory PoE
-    )
-        internal
-    {
-        Vote storage vote = votes[voteId];        
+    ) internal {
+        Vote storage vote = votes[voteId];
         if (block.timestamp < vote.endTime) {
             revert VoteHasNotEnded();
         }
@@ -195,21 +175,11 @@ abstract contract CicadaVote {
             revert VoteAlreadyFinalized();
         }
 
-        _verifySolutionCorrectness(
-            pp,
-            vote.tally,
-            tallyPlaintext,
-            w,
-            PoE
-        );
+        _verifySolutionCorrectness(pp, vote.tally, tallyPlaintext, w, PoE);
 
         vote.isFinalized = true;
 
-        emit VoteFinalized(
-            voteId,
-            tallyPlaintext,
-            vote.numVotes - tallyPlaintext
-        );
+        emit VoteFinalized(voteId, tallyPlaintext, vote.numVotes - tallyPlaintext);
     }
 
     /// @dev OR composition of two DLOG equality sigma protocols:
@@ -221,30 +191,23 @@ abstract contract CicadaVote {
     ///      latter case represents a "yes" ballot.
     /// @param pp The public parameters used for the vote.
     /// @param parametersHash The hash of `pp`.
-    /// @param Z The time-lock puzzle encoding the ballot. 
+    /// @param Z The time-lock puzzle encoding the ballot.
     /// @param PoV The proof of ballot validity.
     function _verifyBallotValidity(
         PublicParameters memory pp,
         bytes32 parametersHash,
         Puzzle memory Z,
         ProofOfValidity memory PoV
-    )
-        internal
-        view
-    {
+    ) internal view {
         PoV.a_0 = PoV.a_0.normalize(pp.N);
         PoV.b_0 = PoV.b_0.normalize(pp.N);
         PoV.a_1 = PoV.a_1.normalize(pp.N);
         PoV.b_1 = PoV.b_1.normalize(pp.N);
 
         // Fiat-Shamir
-        uint256 c = uint256(keccak256(abi.encode(
-            PoV.a_0,
-            PoV.b_0,
-            PoV.a_1,
-            PoV.b_1,
-            parametersHash
-        )));
+        uint256 c = uint256(
+            keccak256(abi.encode(PoV.a_0, PoV.b_0, PoV.a_1, PoV.b_1, parametersHash))
+        );
 
         // c_0 + c_1 = c (mod 2^256)
         unchecked {
@@ -254,62 +217,41 @@ abstract contract CicadaVote {
         }
 
         // g^t_0 = a_0 * u^c_0 (mod N)
-        uint256[4] memory lhs = pp.g
-            .expMod(PoV.t_0, pp.N)
-            .normalize(pp.N);
-        uint256[4] memory rhs = Z.u
-            .expMod(PoV.c_0, pp.N)
-            .mulMod(PoV.a_0, pp.N)
-            .normalize(pp.N);
+        uint256[4] memory lhs = pp.g.expMod(PoV.t_0, pp.N).normalize(pp.N);
+        uint256[4] memory rhs = Z.u.expMod(PoV.c_0, pp.N).mulMod(PoV.a_0, pp.N).normalize(pp.N);
         if (!lhs.eq(rhs)) {
             revert InvalidBallot();
         }
 
         // h^t_0 = b_0 * v^c_0 (mod N)
-        lhs = pp.h
-            .expMod(PoV.t_0, pp.N)
-            .normalize(pp.N);
-        rhs = Z.v
-            .expMod(PoV.c_0, pp.N)
-            .mulMod(PoV.b_0, pp.N)
-            .normalize(pp.N);
+        lhs = pp.h.expMod(PoV.t_0, pp.N).normalize(pp.N);
+        rhs = Z.v.expMod(PoV.c_0, pp.N).mulMod(PoV.b_0, pp.N).normalize(pp.N);
         if (!lhs.eq(rhs)) {
             revert InvalidBallot();
         }
 
         // g^t_1 = a_1 * u^c_1 (mod N)
-        lhs = pp.g
-            .expMod(PoV.t_1, pp.N)
-            .normalize(pp.N);
-        rhs = Z.u
-            .expMod(PoV.c_1, pp.N)
-            .mulMod(PoV.a_1, pp.N)
-            .normalize(pp.N);
+        lhs = pp.g.expMod(PoV.t_1, pp.N).normalize(pp.N);
+        rhs = Z.u.expMod(PoV.c_1, pp.N).mulMod(PoV.a_1, pp.N).normalize(pp.N);
         if (!lhs.eq(rhs)) {
             revert InvalidBallot();
         }
 
         // h^t_1 = b_1 * (v * y^(-1))^c_1 (mod N)
-        lhs = pp.h
-            .expMod(PoV.t_1, pp.N)
-            .normalize(pp.N);
-        rhs = Z.v
-            .mulMod(pp.yInv, pp.N)
-            .expMod(PoV.c_1, pp.N)
-            .mulMod(PoV.b_1, pp.N)
-            .normalize(pp.N);
+        lhs = pp.h.expMod(PoV.t_1, pp.N).normalize(pp.N);
+        rhs = Z.v.mulMod(pp.yInv, pp.N).expMod(PoV.c_1, pp.N).mulMod(PoV.b_1, pp.N).normalize(pp.N);
         if (!lhs.eq(rhs)) {
             revert InvalidBallot();
         }
     }
 
-    /// @dev Verifies that `s` is the plaintext tally encoded in the 
-    ///      homomorphic timelock puzzle `Z`. 
+    /// @dev Verifies that `s` is the plaintext tally encoded in the
+    ///      homomorphic timelock puzzle `Z`.
     /// @param pp The public parameters used for the vote.
-    /// @param Z The time-lock puzzle encoding the tally. 
+    /// @param Z The time-lock puzzle encoding the tally.
     /// @param s The purported plaintext tally encoded by `Z`.
-    /// @param w The purported value `w := Z.u^(2^T)`. 
-    /// @param PoE The Wesolowski proof of exponentiation (i.e. the 
+    /// @param w The purported value `w := Z.u^(2^T)`.
+    /// @param PoE The Wesolowski proof of exponentiation (i.e. the
     ///        proof that `w = Z.u^(2^T)`)
     function _verifySolutionCorrectness(
         PublicParameters memory pp,
@@ -317,18 +259,12 @@ abstract contract CicadaVote {
         uint256 s,
         uint256[4] memory w,
         ProofOfExponentiation memory PoE
-    )
-        internal
-        view
-    {
+    ) internal view {
         bytes32 parametersHash = keccak256(abi.encode(pp));
         _verifyExponentiation(pp, parametersHash, Z.u, w, PoE);
 
         // Check v = w * y^s (mod N)
-        uint256[4] memory rhs = pp.y
-            .expMod(s, pp.N)
-            .mulMod(w, pp.N)
-            .normalize(pp.N);
+        uint256[4] memory rhs = pp.y.expMod(s, pp.N).mulMod(w, pp.N).normalize(pp.N);
         if (!Z.v.eq(rhs)) {
             revert InvalidPuzzleSolution();
         }
@@ -343,10 +279,7 @@ abstract contract CicadaVote {
         uint256[4] memory u,
         uint256[4] memory w,
         ProofOfExponentiation memory PoE
-    )
-        private
-        view
-    {
+    ) private view {
         w = w.normalize(pp.N);
         // Fiat-Shamir random prime
         uint256 l = PoE.l;
@@ -354,10 +287,9 @@ abstract contract CicadaVote {
 
         uint256 r = _expMod(2, pp.T, l); // r = 2^T (mod l)
         // Check w = π^l * u^r (mod N)
-        uint256[4] memory rhs = PoE.pi
-            .expMod(l, pp.N)
-            .mulMod(u.expMod(r, pp.N), pp.N)
-            .normalize(pp.N);
+        uint256[4] memory rhs = PoE.pi.expMod(l, pp.N).mulMod(u.expMod(r, pp.N), pp.N).normalize(
+            pp.N
+        );
         if (!w.eq(rhs)) {
             revert InvalidProofOfExponentiation();
         }
@@ -368,29 +300,27 @@ abstract contract CicadaVote {
         PublicParameters memory pp,
         Puzzle storage tally,
         Puzzle memory ballot
-    )
-        private
-    {
+    ) private {
         tally.u = tally.u.mulMod(ballot.u, pp.N).normalize(pp.N);
         tally.v = tally.v.mulMod(ballot.v, pp.N).normalize(pp.N);
     }
 
     // Computes (base ** exponent) % modulus
-    function _expMod(uint256 base, uint256 exponent, uint256 modulus)
-        private
-        view
-        returns (uint256 result)
-    {
-        assembly { 
+    function _expMod(
+        uint256 base,
+        uint256 exponent,
+        uint256 modulus
+    ) private view returns (uint256 result) {
+        assembly {
             // Get free memory pointer
             let p := mload(0x40)
             // Store parameters for the EXPMOD (0x05) precompile
-            mstore(p, 0x20)                    // Length of Base
-            mstore(add(p, 0x20), 0x20)         // Length of Exponent
-            mstore(add(p, 0x40), 0x20)         // Length of Modulus
-            mstore(add(p, 0x60), base)         // Base
-            mstore(add(p, 0x80), exponent)     // Exponent
-            mstore(add(p, 0xa0), modulus)      // Modulus
+            mstore(p, 0x20) // Length of Base
+            mstore(add(p, 0x20), 0x20) // Length of Exponent
+            mstore(add(p, 0x40), 0x20) // Length of Modulus
+            mstore(add(p, 0x60), base) // Base
+            mstore(add(p, 0x80), exponent) // Exponent
+            mstore(add(p, 0xa0), modulus) // Modulus
             // Call 0x05 (EXPMOD) precompile
             if iszero(staticcall(gas(), 0x05, p, 0xc0, 0, 0x20)) {
                 revert(0, 0)
