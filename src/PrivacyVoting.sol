@@ -7,34 +7,13 @@ import {SafeCastUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/mat
 
 import {IDAO, PluginUUPSUpgradeable} from "@aragon/osx/core/plugin/PluginUUPSUpgradeable.sol";
 
-import {IDAO, PluginUUPSUpgradeable} from "@aragon/osx/core/plugin/PluginUUPSUpgradeable.sol";
-
 import {IMembership} from "@aragon/osx/core/plugin/membership/IMembership.sol";
 import {ProposalUpgradeable} from "@aragon/osx/core/plugin/proposal/ProposalUpgradeable.sol";
 import {IProposal} from "@aragon/osx/core/plugin/proposal/IProposal.sol";
-//import {SemaphoreVerifier} from "@semaphore-protocol/semaphore/base/SemaphoreVerifier.sol";
-//import {ISemaphoreVerifier} from "@semaphore-protocol/semaphore/interfaces/ISemaphoreVerifier.sol";
 
+import {ISemaphoreVerifier} from "./ISemaphoreVerifier.sol";
 import {LibUint1024} from "./LibUint1024.sol";
 import {LibPrime} from "./LibPrime.sol";
-
-interface ISemaphoreVerifier {
-    /**@notice Verifies whether a Semaphore proof is valid.
-     * @param merkleTreeRoot: Root of the Merkle tree.
-     * @param nullifierHash: Nullifier hash.
-     * @param signal: Semaphore signal.
-     * @param externalNullifier: External nullifier.
-     * @param proof: Zero-knowledge proof.
-     * @param merkleTreeDepth: Depth of the tree*/
-    function verifyProof(
-        uint256 merkleTreeRoot,
-        uint256 nullifierHash,
-        uint256 signal,
-        uint256 externalNullifier,
-        uint256[8] calldata proof,
-        uint256 merkleTreeDepth
-    ) external view;
-}
 
 /**@title PrivacyVoting
  * @author MH
@@ -53,7 +32,7 @@ contract PrivacyVoting is
     bytes4 internal constant ADDRESSLIST_VOTING_INTERFACE_ID =
         this.createProposal.selector ^ this.castBallot.selector ^ this.finalizeVote.selector;
 
-    ISemaphoreVerifier immutable semaphoreVerifier;
+    ISemaphoreVerifier public immutable semaphoreVerifier;
 
     struct PublicParameters {
         uint256[4] N;
@@ -165,7 +144,10 @@ contract PrivacyVoting is
     /**@notice Initializes the component.
      * @dev This method is required to support [ERC-1822](https://eips.ethereum.org/EIPS/eip-1822).
      * @param _dao The IDAO interface of the associated DAO.*/
-    function initialize(IDAO _dao) external initializer {}
+    function initialize(IDAO _dao, VotingSettings calldata _votingSettings) external initializer {
+        __PluginUUPSUpgradeable_init(_dao);
+        votingSettings = _votingSettings;
+    }
 
     /**@inheritdoc IMembership*/
     function isMember(address) external pure returns (bool) {
@@ -238,29 +220,29 @@ contract PrivacyVoting is
     function castBallot(
         uint256 _proposalId,
         PublicParameters memory _pp,
-        Puzzle memory ballot,
+        Puzzle memory _ballot,
         ProofOfValidity memory _PoV,
-        uint256 nullifierHash,
-        uint256[8] calldata semaphoreProof
+        uint256 _nullifierHash,
+        uint256[8] calldata _semaphoreProof
     ) external {
         Proposal storage proposal_ = proposals[_proposalId];
 
-        if (proposal_.voterData[_proposalId].nullifiers[nullifierHash]) {
-            revert DuplicateNullifier(nullifierHash);
+        if (proposal_.voterData[_proposalId].nullifiers[_nullifierHash]) {
+            revert DuplicateNullifier(_nullifierHash);
         }
 
         semaphoreVerifier.verifyProof(
             proposal_.voterData[_proposalId].merkleRoot,
-            nullifierHash,
-            uint256(keccak256(abi.encode(ballot))),
+            _nullifierHash,
+            uint256(keccak256(abi.encode(_ballot))),
             _proposalId,
-            semaphoreProof,
+            _semaphoreProof,
             proposal_.voterData[_proposalId].merkleTreeDepth
         );
 
-        proposal_.voterData[_proposalId].nullifiers[nullifierHash] = true;
+        proposal_.voterData[_proposalId].nullifiers[_nullifierHash] = true;
 
-        _castBallot(_proposalId, _pp, ballot, _PoV);
+        _castBallot(_proposalId, _pp, _ballot, _PoV);
     }
 
     function finalizeVote(

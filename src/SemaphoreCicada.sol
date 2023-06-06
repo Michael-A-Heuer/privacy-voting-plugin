@@ -1,33 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0
 pragma solidity ^0.8;
 
-import './CicadaVote.sol';
+import {ISemaphoreVerifier} from "./ISemaphoreVerifier.sol";
 
-
-// https://github.com/semaphore-protocol/semaphore/blob/main/packages/contracts/contracts/interfaces/ISemaphoreVerifier.sol
-interface ISemaphoreVerifier {
-    /// @dev Verifies whether a Semaphore proof is valid.
-    /// @param merkleTreeRoot: Root of the Merkle tree.
-    /// @param nullifierHash: Nullifier hash.
-    /// @param signal: Semaphore signal.
-    /// @param externalNullifier: External nullifier.
-    /// @param proof: Zero-knowledge proof.
-    /// @param merkleTreeDepth: Depth of the tree.
-    function verifyProof(
-        uint256 merkleTreeRoot,
-        uint256 nullifierHash,
-        uint256 signal,
-        uint256 externalNullifier,
-        uint256[8] calldata proof,
-        uint256 merkleTreeDepth
-    ) external view;
-}
-
+import {CicadaVote} from "./CicadaVote.sol";
 
 /// @dev Example showing how to extend the CicadaVote
-///      contract with an anonymity solution (Semaphore in this case). 
+///      contract with an anonymity solution (Semaphore in this case).
 contract SemaphoreCicada is CicadaVote {
-
     struct SemaphoreData {
         uint256 merkleRoot;
         uint256 merkleTreeDepth;
@@ -52,9 +32,7 @@ contract SemaphoreCicada is CicadaVote {
         uint64 votingPeriod,
         uint256 votersMerkleRoot,
         uint256 merkleTreeDepth
-    )
-        external
-    {
+    ) external {
         if (merkleTreeDepth < 16 || merkleTreeDepth > 32) {
             revert UnsupportedMerkleTreeDepth(merkleTreeDepth);
         }
@@ -70,9 +48,7 @@ contract SemaphoreCicada is CicadaVote {
         ProofOfValidity memory PoV,
         uint256 nullifierHash,
         uint256[8] calldata semaphoreProof
-    )
-        external
-    {
+    ) external {
         if (voterData[voteId].nullifiers[nullifierHash]) {
             revert DuplicateNullifier(nullifierHash);
         }
@@ -97,9 +73,7 @@ contract SemaphoreCicada is CicadaVote {
         uint64 tallyPlaintext,
         uint256[4] memory w,
         ProofOfExponentiation memory PoE
-    )
-        external
-    {
+    ) external {
         _finalizeVote(voteId, pp, tallyPlaintext, w, PoE);
     }
 }
